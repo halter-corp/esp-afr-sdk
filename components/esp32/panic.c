@@ -64,6 +64,73 @@
 
 #if !CONFIG_ESP32_PANIC_SILENT_REBOOT
 //printf may be broken, so we fix our own printing fns...
+
+#ifdef HALTER_MODIFIED_ESP_IDF
+
+#include <string.h>
+
+#define FAULT_BUFFER_MAGIC_NUMBER 0x4215    // Random unique id of buffer
+
+#define VALID_FAULT_BUFFER(fb_addr)    (fb_addr!= NULL &&  fb_addr->magic_number == FAULT_BUFFER_MAGIC_NUMBER)
+#define FAULT_BUFFER_CONFIGURED(fb_addr, size)   (fb_addr!= NULL &&  fb_addr->magic_number == FAULT_BUFFER_MAGIC_NUMBER && fb_addr->size == size )
+
+typedef  struct
+{
+    uint32_t magic_number;
+    uint32_t index;
+    size_t   size;
+    char     data;   // first byte of data
+}__attribute__((__packed__)) fault_buffer_t;
+
+static fault_buffer_t *fault_buffer = NULL;
+
+
+/**
+ * @brief Configure panic log buffer memory location and size
+ */
+void esp_panic_configure_log(void *addr, size_t size)
+{
+    fault_buffer = addr;
+    if (!FAULT_BUFFER_CONFIGURED(fault_buffer, size))
+    {
+        fault_buffer->magic_number = FAULT_BUFFER_MAGIC_NUMBER;
+        fault_buffer->size = size;
+        fault_buffer->index = 0;
+        fault_buffer->data = 0;
+    }
+}
+
+/**
+ * @brief Fetches any previous trace data in the panic log and
+ *        copies the trace into the provided destination buffer.
+ * @param dest: Buffer to copy the trace text into.
+ * @param size: Maximum number of bytes that may be copied into destination buffer.
+ * @return Number of bytes copied into the destination buffer.
+ */
+size_t esp_panic_read_log(char *dest , size_t dest_size)
+{
+    uint32_t byte_count = 0;
+    if (VALID_FAULT_BUFFER(fault_buffer) && dest && dest_size > 0)
+    {
+        if (fault_buffer->data != 0 && fault_buffer->index > 0 && fault_buffer->size > sizeof(fault_buffer_t))
+        {
+            size_t bytes_to_copy = dest_size;
+            size_t bytes_in_log = fault_buffer->size - sizeof(fault_buffer_t);
+            if (bytes_to_copy > bytes_in_log)
+            {
+                bytes_to_copy = bytes_in_log;
+            }
+            strncpy(dest, &fault_buffer->data, bytes_to_copy);
+            dest[dest_size - 1] = '\0';
+            byte_count = strlen(dest);
+        }
+        fault_buffer->index = 0;
+        fault_buffer->data = 0;
+    }
+    return byte_count;
+}
+#endif
+
 static void panicPutChar(char c)
 {
     while (((READ_PERI_REG(UART_STATUS_REG(CONFIG_CONSOLE_UART_NUM)) >> UART_TXFIFO_CNT_S)&UART_TXFIFO_CNT) >= 126) ;
@@ -382,7 +449,7 @@ static void illegal_instruction_helper(XtExcFrame *frame)
     panicPutStr("Memory dump at 0x");
     panicPutHex(epc);
     panicPutStr(": ");
-    
+
     panicPutHex(*pepc);
     panicPutStr(" ");
     panicPutHex(*(pepc + 1));

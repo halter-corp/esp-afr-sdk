@@ -23,7 +23,7 @@ extern "C"
 
 
 /**
- * @brief If an OCD is connected over JTAG. set breakpoint 0 to the given function 
+ * @brief If an OCD is connected over JTAG. set breakpoint 0 to the given function
  *        address. Do nothing otherwise.
  * @param data  Pointer to the target breakpoint position
  */
@@ -45,7 +45,7 @@ void esp_set_breakpoint_if_jtag(void *fn);
  *
  * @return ESP_ERR_INVALID_ARG on invalid arg, ESP_OK otherwise
  *
- * @warning The ESP32 watchpoint hardware watches a region of bytes by effectively 
+ * @warning The ESP32 watchpoint hardware watches a region of bytes by effectively
  *          masking away the lower n bits for a region with size 2^n. If adr does
  *          not have zero for these lower n bits, you may not be watching the
  *          region you intended.
@@ -60,6 +60,29 @@ esp_err_t esp_set_watchpoint(int no, void *adr, int size, int flags);
  *
  */
 void esp_clear_watchpoint(int no);
+
+#ifdef HALTER_MODIFIED_ESP_IDF
+/**
+ * @brief Fetches any previous trace data in the panic log and
+ *        copies the trace into the provided destination buffer.
+ * @param dest: Buffer to copy the trace text into.
+ * @param size: Maximum number of bytes that may be copied into destination buffer.
+ * @return Number of bytes copied into the destination buffer.
+ */
+size_t esp_panic_read_log(char *dest, size_t size);
+
+/**
+ * @brief Configure panic log buffer memory location and size
+ *
+ * To have the stack trace persist through reset the message needs to be written to external spi-ram.
+ * This function only configures the structure if no previous configuration is detected.
+ *
+ * @param addr - pointer to storage memory
+ * @param size - maximum size of target storage
+ *
+ */
+void esp_panic_configure_log(void *addr, size_t size);
+#endif
 
 /**
  * @brief Checks stack pointer
